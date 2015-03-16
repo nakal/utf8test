@@ -6,20 +6,22 @@ generally to look up some unicode characters.
 
 ## Syntax
 
-```utf8text
+```
+utf8text
 ```
 
 At the moment the program has only one mode of operation and will print
 one character per line and show
 
-* the U+XXXX notation in first column
+* the `U+XXXX` notation in first column
 * the raw UTF-8 character in second column (this is the character itself,
 	which is shown if the current font supports it)
 * following are the bytes in hexadecimal
 
 ## Sample output (shortened)
 
-```U+0000  ^@      00
+```
+U+0000  ^@      00
 U+0001  ^A      01
 U+0002  ^B      02
 U+0003  ^C      03
