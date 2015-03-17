@@ -7,11 +7,20 @@ generally to look up some unicode characters.
 ## Syntax
 
 ```
-utf8text
+utf8test [ options ]
+
+Options:
+	-s code first character to output (hex, accepts prefix "U+")
+	-e code last character to output (hex, accepts prefix "U+")
+	-f fmt  format (default "uch"; max length: 16)
+		h       show hex byte sequence
+		c       show UTF-8 character
+		u       show unicode notation ("U+xxxx")
+	-d char delimiter within one character (default '\t')
 ```
 
-At the moment the program has only one mode of operation and will print
-one character per line and show
+The default mode of operation and will print all unicode
+characters using one character per line and show
 
 * the `U+XXXX` notation in first column
 * the raw UTF-8 character in second column (this is the character itself,
@@ -50,4 +59,6 @@ U+0395  Ε       ce 95
 
 * Please make sure that your console/terminal is set to UTF-8, otherwise
 the output probably won't make any sense for you.
+	* You will be warned about such condition (but it is probably not
+	  reliable).
 * It is advisable to pipe the output to a pager to slow down the output.

@@ -1,20 +1,43 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <locale.h>
 #include <string.h>
 
+#define UNICODE_FIRST_CHAR 0x0u
+#define UNICODE_LAST_CHAR 0x10ffffu
+
 /*	sequence start values */
 static const unsigned int utf8_min[4] = {
-	0x0u, 0x80u, 0x800u, 0x10000u
+	UNICODE_FIRST_CHAR, 0x80u, 0x800u, 0x10000u
 };
 
 /*	sequence end values */
 static const unsigned int utf8_max[4] = {
-	0x7fu, 0x7ffu, 0xffffu, 0x10ffffu
+	0x7fu, 0x7ffu, 0xffffu, UNICODE_LAST_CHAR
 };
 
+/*	 unicode symbol output range */
+static unsigned int unicode_start = UNICODE_FIRST_CHAR;
+static unsigned int unicode_end = UNICODE_LAST_CHAR;
+
+/*	delimiter (option) */
+static int delimiter = '\t';
+
+/*	output format (option) */
+#define FORMAT_MAXLEN 16
+static char format[FORMAT_MAXLEN + 1] = "uch";
+
 static void dump(unsigned char seq_bytes);
+static void parse_options(int argc, char *argv[]);
+static int parse_unicode_notation(const char *s, const char opt);
+static void usage(const char *progname);
+
+static void show_utf8_notation(unsigned int c);
+static void show_utf8_char(unsigned int c, const unsigned char *b,
+    unsigned char len);
+static void show_utf8_bytes(unsigned char b[], unsigned char len);
 
 int main(int argc, char *argv[])
 {
@@ -23,10 +46,7 @@ int main(int argc, char *argv[])
 	/*	locale string */
 	const char *locale;
 
-	if (argc != 1) {
-		fprintf(stderr, "Syntax:\n\t%s\n", argv[0]);
-		exit(1);
-	}
+	parse_options(argc, argv);
 
 	/*	check locale */
 	setlocale(LC_CTYPE, "");
@@ -75,76 +95,188 @@ static void dump(unsigned char seq_bytes)
 
 	/*	the current character to output */
 	unsigned int cur;
+	size_t format_len;
+
+	/*	length of the output format specifier */
+	format_len = strlen(format);
 
 	/*	calculate properties of the first byte */
 	switch (seq_bytes) {
-		case 1:
-			seq0 = 0;
-			size0 = 7;
-			break;
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-		case 6:
-			size0 = 7 - seq_bytes;
-			seq0 = (((unsigned char)1 << seq_bytes)
-			    - 1) << (size0 + 1);
-			break;
-		default:
-			return;
+	case 1:
+		seq0 = 0;
+		size0 = 7;
+		break;
+	case 2:
+	case 3:
+	case 4:
+	case 5:
+	case 6:
+		size0 = 7 - seq_bytes;
+		seq0 = (((unsigned char)1 << seq_bytes)
+		    - 1) << (size0 + 1);
+		break;
+	default:
+		return;
 	}
 
 	mask0 = ((unsigned char)1 << size0) - 1;
 
+	/*	determine the first char to output */
+	cur = utf8_min[seq_bytes - 1];
+	if (unicode_start > cur)
+		cur = unicode_start;
+
 	/*	ok, let's output them all */
-	for (cur = utf8_min[seq_bytes - 1]; cur <= utf8_max[seq_bytes - 1];
-	    cur++) {
+	for (; cur <= utf8_max[seq_bytes - 1] && cur <= unicode_end;cur++) {
 
 		unsigned int c = cur;
 		unsigned char d, b[6];
+		size_t fp;
 
-		/*	print the unicode notation */
-		printf("U+%04X\t", c);
+		for (d = seq_bytes - 1; d > 0; d--) {
+			b[d] = seq | (c & mask);
+			c >>= size;
+		}
+		b[0] = seq0 | (c & mask0);
 
-		/*
-		 *	Filter out some characters and output manually.
-		 *	The default branch is for the most characters.
-		 */
-		switch (c) {
-		case 0x08:
-			printf("<BSP>");
-			b[0] = 8;
-			break;
-		case '\t':
-			printf("<TAB>");
-			b[0] = 9;
-			break;
-		case '\n':
-			printf("<RET>");
-			b[0] = 10;
-			break;
-		case 0x20:
-			printf("<SPC>");
-			b[0] = 0x20;
-			break;
-		default:
-			for (d = seq_bytes - 1; d > 0; d--) {
-				b[d] = seq | (c & mask);
-				c >>= size;
+		for (fp = 0; fp < format_len; fp++) {
+			switch (format[fp]) {
+			case 'c':
+				show_utf8_char(cur, b, seq_bytes);
+				break;
+			case 'h':
+				show_utf8_bytes(b, seq_bytes);
+				break;
+			case 'u':
+				show_utf8_notation(cur);
+				break;
+			default:
+				break;
 			}
 
-			b[0] = seq0 | (c & mask0);
-			fwrite(b, seq_bytes, 1, stdout);
-			break;
+			if (fp < format_len - 1)
+				putchar(delimiter);
 		}
-		putchar('\t');
-
-		/*	also output the hex bytes */
-		for (d = 0; d < seq_bytes; d++)
-			printf("%02x%s", b[d], d < seq_bytes - 1 ? " " : "");
 
 		/*	finish the line */
 		putchar('\n');
 	}
+}
+
+/*	print the unicode notation */
+static void show_utf8_notation(unsigned int c)
+{
+	printf("U+%04X", c);
+}
+
+/*	print the hex bytes */
+static void show_utf8_bytes(unsigned char b[], unsigned char len)
+{
+	unsigned char d;
+
+	for (d = 0; d < len; d++)
+		printf("%02x%s", b[d], d < len - 1 ?
+		    " " : "");
+}
+
+static void show_utf8_char(unsigned int c, const unsigned char *b,
+    unsigned char len)
+{
+	/*
+	 *	Filter out some characters and output manually.
+	 *	The default branch is for the most characters.
+	 */
+	switch (c) {
+	case 0x08:
+		printf("<BSP>");
+		break;
+	case '\t':
+		printf("<TAB>");
+		break;
+	case '\n':
+		printf("<RET>");
+		break;
+	case ' ':
+		printf("<SPC>");
+		break;
+	default:
+		fwrite(b, len, 1, stdout);
+		break;
+	}
+}
+
+static void parse_options(int argc, char *argv[])
+{
+	char ch;
+
+	while ((ch = getopt(argc, argv, "d:e:f:s:")) != -1) {
+
+		int n;
+
+		switch (ch) {
+		case 'd':
+			delimiter = optarg[0];
+			break;
+		case 'e':
+		case 's':
+			n = parse_unicode_notation(optarg, ch);
+			if (n < 0)
+				usage(argv[0]);
+			if (ch == 's')
+				unicode_start = (unsigned int)n;
+			else
+				unicode_end = (unsigned int)n;
+			break;
+		case 'f':
+			if (strlen(optarg) > 0)
+				*stpncpy(format, optarg, FORMAT_MAXLEN) = 0;
+			break;
+		default:
+			usage(argv[0]);
+			break;
+		}
+	}
+}
+
+static int parse_unicode_notation(const char *s, const char opt)
+{
+	char *endp;
+	unsigned long res;
+
+	if (((s[0] == 'U' || s[0] == 'u') && s[1] == '+')
+	    || (s[0] == '0' && s[1] == 'x'))
+		s += 2;
+
+	if (*s == 0)
+		goto parse_error;
+
+	res = strtoul(s, &endp, 16);
+	if (*endp != 0)
+		goto parse_error;
+
+	if (res > UNICODE_LAST_CHAR)
+		goto parse_error;
+
+	return (int)res;
+
+parse_error:
+	fprintf(stderr, "Invalid unicode value for -%c\n", opt);
+	return -1;
+}
+
+static void usage(const char *progname)
+{
+	fprintf(stderr, "Syntax:\n\t%s [ options ]\n\nOptions:\n", progname);
+	fprintf(stderr,"\t-s code\tfirst character to output (hex, accepts"
+	    " prefix \"U+\")\n");
+	fprintf(stderr,"\t-e code\tlast character to output (hex, accepts"
+	    " prefix \"U+\")\n");
+	fprintf(stderr,"\t-f fmt\tformat (default \"uch\"; max length: %u)\n",
+	    FORMAT_MAXLEN);
+	fprintf(stderr,"\t\th\tshow hex byte sequence\n");
+	fprintf(stderr,"\t\tc\tshow UTF-8 character\n");
+	fprintf(stderr,"\t\tu\tshow unicode notation (\"U+xxxx\")\n");
+	fprintf(stderr,"\t-d char\tdelimiter within one character"
+	    " (default '\\t')\n");
+	exit(1);
 }
