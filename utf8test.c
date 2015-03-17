@@ -1,6 +1,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <locale.h>
+#include <string.h>
+
+/*	sequence start values */
+static const unsigned int utf8_min[4] = {
+	0x0u, 0x80u, 0x800u, 0x10000u
+};
+
+/*	sequence end values */
+static const unsigned int utf8_max[4] = {
+	0x7fu, 0x7ffu, 0xffffu, 0x10ffffu
+};
 
 static void dump(unsigned char seq_bytes);
 
@@ -8,9 +20,32 @@ int main(int argc, char *argv[])
 {
 	unsigned char seq_len;
 
+	/*	locale string */
+	const char *locale;
+
 	if (argc != 1) {
 		fprintf(stderr, "Syntax:\n\t%s\n", argv[0]);
 		exit(1);
+	}
+
+	/*	check locale */
+	setlocale(LC_CTYPE, "");
+	locale = setlocale(LC_CTYPE, NULL);
+
+	if (locale == NULL)
+		fprintf(stderr, "setlocale returned NULL.\n");
+	else {
+		char *dot;
+
+		dot = strrchr(locale, '.');
+		if (dot == NULL)
+			fprintf(stderr, "setlocale returned '%s', which does "
+			    "not specify encoding.\n", locale);
+		else {
+			if (strcmp(++dot, "UTF-8") != 0)
+				fprintf(stderr, "setlocale returned encoding "
+				    "'%s', which is not 'UTF-8'.\n", dot);
+		}
 	}
 
 	/*
@@ -38,16 +73,6 @@ static void dump(unsigned char seq_bytes)
 	const unsigned char seq = 0x80;
 	const unsigned char mask = 0x3f;
 
-	/*	sequence start values */
-	const unsigned int min[4] = {
-		0x0u, 0x80u, 0x800u, 0x10000u
-	};
-
-	/*	sequence end values */
-	const unsigned int max[4] = {
-		0x7fu, 0x7ffu, 0xffffu, 0x10ffffu
-	};
-
 	/*	the current character to output */
 	unsigned int cur;
 
@@ -73,7 +98,8 @@ static void dump(unsigned char seq_bytes)
 	mask0 = ((unsigned char)1 << size0) - 1;
 
 	/*	ok, let's output them all */
-	for (cur = min[seq_bytes - 1]; cur <= max[seq_bytes - 1]; cur++) {
+	for (cur = utf8_min[seq_bytes - 1]; cur <= utf8_max[seq_bytes - 1];
+	    cur++) {
 
 		unsigned int c = cur;
 		unsigned char d, b[6];
