@@ -1,5 +1,8 @@
 # utf8test
 
+| Repository moved to: `https://codeberg.org/nakal/utf8test` |
+|---|
+
 A console (terminal) application to print all unicode characters in
 UTF-8 encoding. It is useful to test the completeness of fonts and
 generally to look up some unicode characters.
